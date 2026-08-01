@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: guardloop-config
+  namespace: guardloop
+data:
+  ENV: "production"
+  DATABASE_URL: "postgresql+asyncpg://guardloop:guardloop@postgres-service:5432/guardloop"
+  REDIS_URL: "redis://redis-service:6379/0"
+  MAX_LOOP_ITERATIONS: "50"
+  CONTEXT_BLOAT_THRESHOLD: "8000"
+  AUTO_APPROVE_THRESHOLD: "90"
+  HUMAN_REVIEW_THRESHOLD: "70"
+  BLOCK_THRESHOLD: "50"

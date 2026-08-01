@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guardloop-frontend
+  namespace: guardloop
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: guardloop-frontend
+  template:
+    metadata:
+      labels:
+        app: guardloop-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: guardloop/frontend:v1.0.0
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "https://api.guardloop.dev"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: guardloop-frontend-service
+  namespace: guardloop
+spec:
+  selector:
+    app: guardloop-frontend
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP

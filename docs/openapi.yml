@@ -1,0 +1,247 @@
+openapi: 3.1.0
+info:
+  title: GuardLoop API
+  version: 1.0.0
+  description: Agent Trust & Orchestration Layer
+servers:
+  - url: https://api.guardloop.dev
+    description: Production
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  service: { type: string }
+                  version: { type: string }
+
+  /tasks:
+    get:
+      summary: List tasks
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: agent_id
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      summary: Create task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskCreate"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{task_id}:
+    get:
+      summary: Get task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Task details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    patch:
+      summary: Update task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TaskUpdate"
+      responses:
+        "200":
+          description: Updated task
+
+  /tasks/{task_id}/start:
+    post:
+      summary: Start task
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Task started
+
+  /tasks/{task_id}/score:
+    post:
+      summary: Calculate score
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Score result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Score"
+
+  /agents:
+    get:
+      summary: List agents
+      responses:
+        "200":
+          description: List of agents
+    post:
+      summary: Create agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentCreate"
+      responses:
+        "201":
+          description: Created agent
+
+  /scores:
+    get:
+      summary: List scores
+      responses:
+        "200":
+          description: List of scores
+
+  /pii/scrub:
+    post:
+      summary: Scrub context
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task_id: { type: string }
+                context_text: { type: string }
+                strict_mode: { type: boolean }
+      responses:
+        "200":
+          description: Scrub result
+
+  /browser/verify:
+    post:
+      summary: Verify browser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                task_id: { type: string }
+                url: { type: string }
+                viewport_width: { type: integer }
+                viewport_height: { type: integer }
+      responses:
+        "202":
+          description: Verification queued
+
+  /webhooks/ingest/{source}:
+    post:
+      summary: Ingest webhook
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Webhook received
+
+components:
+  schemas:
+    Task:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string }
+        priority: { type: integer }
+        current_loop: { type: integer }
+        max_loops: { type: integer }
+        context_size_tokens: { type: integer }
+        created_at: { type: string, format: date-time }
+    TaskCreate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        agent_id: { type: string }
+        parent_ids: { type: array, items: { type: string } }
+        priority: { type: integer }
+        max_loops: { type: integer }
+        context_window: { type: object }
+    TaskUpdate:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string }
+        status: { type: string }
+        priority: { type: integer }
+        max_loops: { type: integer }
+        context_window: { type: object }
+    AgentCreate:
+      type: object
+      properties:
+        name: { type: string }
+        agent_type: { type: string, enum: [cursor, claude_code, github_copilot, custom] }
+        config: { type: object }
+    Score:
+      type: object
+      properties:
+        overall: { type: integer }
+        test_score: { type: number }
+        coverage_score: { type: number }
+        security_score: { type: number }
+        behavioral_score: { type: number }
+        decision: { type: string }

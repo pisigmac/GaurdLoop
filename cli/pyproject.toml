@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardloop-cli"
+version = "1.0.0"
+description = "GuardLoop CLI — Agent Trust & Orchestration Layer"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "GuardLoop"}]
+dependencies = [
+    "click>=8.0",
+]
+
+[project.scripts]
+guardloop = "guardloop_cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["guardloop_cli*"]
