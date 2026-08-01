@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardloop-bridge"
+version = "1.0.0"
+description = "GuardLoop Webhook Bridge — Relay agent webhooks to GuardLoop"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "GuardLoop"}]
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+]
+
+[project.scripts]
+guardloop-bridge = "guardloop_bridge.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["guardloop_bridge*"]

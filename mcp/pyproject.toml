@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guardloop-mcp"
+version = "1.0.0"
+description = "GuardLoop MCP Server — Agent Trust Layer as MCP tools"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "GuardLoop"}]
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+guardloop-mcp = "guardloop_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["guardloop_mcp*"]

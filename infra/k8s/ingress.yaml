@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: guardloop-ingress
+  namespace: guardloop
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - guardloop.dev
+        - api.guardloop.dev
+      secretName: guardloop-tls
+  rules:
+    - host: guardloop.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: guardloop-frontend-service
+                port:
+                  number: 80
+    - host: api.guardloop.dev
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: guardloop-backend-service
+                port:
+                  number: 80

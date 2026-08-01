@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: guardloop
+      POSTGRES_PASSWORD: guardloop
+      POSTGRES_DB: guardloop
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "35432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardloop"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "36379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "38000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://guardloop:guardloop@postgres:5432/guardloop
+      - REDIS_URL=redis://redis:6379/0
+      - ENV=development
+      - SECRET_KEY=guardloop-dev-secret-change-in-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "33000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:38000
+      - HOSTNAME=0.0.0.0
+      - PORT=3000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
