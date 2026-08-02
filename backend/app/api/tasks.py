@@ -4,7 +4,7 @@ from sqlalchemy import select, update
 from sqlalchemy.sql import func
 from typing import List
 from app.core.database import get_db
-from app.core.redis import get_redis
+from app.core.redis import get_redis, broadcast_event
 from app.models.task import Task
 from app.models.score import Score
 from app.schemas.task import TaskCreate, TaskUpdate, TaskOut, TaskDependencyGraph
@@ -39,9 +39,10 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
 
-    # Publish to Redis for task queue
+    # Publish to Redis for task queue & live monitor SSE
     redis = await get_redis()
     await redis.publish("guardloop:tasks:new", str(task.id))
+    await broadcast_event("default-org", "task_created", {"task_id": str(task.id), "name": task.name, "status": task.status})
 
     return task
 
@@ -85,6 +86,7 @@ async def update_task(
 
     await db.commit()
     await db.refresh(task)
+    await broadcast_event("default-org", "task_updated", {"task_id": str(task.id), "name": task.name, "status": task.status})
     return task
 
 @router.post("/{task_id}/start")
@@ -117,6 +119,7 @@ async def start_task(task_id: str, db: AsyncSession = Depends(get_db)):
 
     # Start loop monitoring
     loop_monitor.start(task_id)
+    await broadcast_event("default-org", "task_started", {"task_id": str(task_id), "name": task.name, "status": "running"})
 
     return {"status": "started", "task_id": task_id}
 
@@ -138,6 +141,15 @@ async def check_loop(
             task.status = "blocked"
             task.error_log = "; ".join(state.warnings)
         await db.commit()
+
+    await broadcast_event("default-org", "loop_checked", {
+        "task_id": str(task_id),
+        "name": task.name if task else "Task",
+        "iteration": state.iteration,
+        "tokens": state.context_size_tokens,
+        "should_halt": state.should_halt,
+        "warnings": state.warnings
+    })
 
     return loop_monitor.summary(task_id)
 
@@ -184,34 +196,41 @@ async def calculate_score(
     )
 
     engine = ScoreEngine()
-    result = engine.calculate(tests, coverage, security, behavioral)
+    res_score = engine.calculate(tests, coverage, security, behavioral)
 
     score = Score(
         task_id=task_id,
         org_id=task.org_id,
-        overall=result["overall"],
-        test_score=result["test_score"],
-        coverage_score=result["coverage_score"],
-        security_score=result["security_score"],
-        behavioral_score=result["behavioral_score"],
-        weights=result["weights"],
-        test_details=result["details"]["tests"],
-        security_details=result["details"]["security"],
-        behavioral_details=result["details"]["behavioral"],
-        decision=result["decision"],
+        overall=res_score["overall"],
+        test_score=res_score["test_score"],
+        coverage_score=res_score["coverage_score"],
+        security_score=res_score["security_score"],
+        behavioral_score=res_score["behavioral_score"],
+        weights=res_score["weights"],
+        test_details=res_score["details"]["tests"],
+        security_details=res_score["details"]["security"],
+        behavioral_details=res_score["details"]["behavioral"],
+        decision=res_score["decision"],
     )
     db.add(score)
     await db.commit()
 
     # Update task status based on decision
-    if result["decision"] == "block":
+    if res_score["decision"] == "block":
         task.status = "blocked"
-    elif result["decision"] == "auto_approve":
+    elif res_score["decision"] == "auto_approve":
         task.status = "completed"
 
     await db.commit()
 
-    return result
+    await broadcast_event("default-org", "score_calculated", {
+        "task_id": str(task_id),
+        "name": task.name,
+        "overall": res_score["overall"],
+        "decision": res_score["decision"]
+    })
+
+    return res_score
 
 @router.get("/{task_id}/dependency-graph")
 async def get_dependency_graph(task_id: str, db: AsyncSession = Depends(get_db)):

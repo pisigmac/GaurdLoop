@@ -45,6 +45,12 @@ async def ingest_webhook(
     await db.commit()
     await db.refresh(event)
 
+    await broadcast_event("default-org", "webhook_ingested", {
+        "source": source,
+        "event_type": payload.get("event_type", "unknown"),
+        "event_id": str(event.id)
+    })
+
     # Auto-create task for certain events
     if source in ["cursor", "github"] and payload.get("event_type") in ["pr_opened", "code_change", "automation_triggered"]:
         task = Task(
