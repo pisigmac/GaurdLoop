@@ -4,7 +4,8 @@ from datetime import datetime
 
 class BrowserVerifyRequest(BaseModel):
     task_id: str
-    url: str
+    url: Optional[str] = None
+    target_url: Optional[str] = None
     viewport_width: int = 1280
     viewport_height: int = 720
     baseline_screenshot_url: Optional[str] = None

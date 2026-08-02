@@ -7,6 +7,7 @@ import hashlib
 import json
 from app.core.database import get_db
 from app.core.config import get_settings
+from app.core.redis import broadcast_event
 from app.models.webhook_event import WebhookEvent
 from app.models.task import Task
 from app.schemas.webhook import WebhookIngest, WebhookOut

@@ -25,8 +25,9 @@ async def verify_browser(
 
     # Run in background to avoid blocking
     async def run_verify():
+        target_url = data.url or data.target_url or "http://localhost:33000"
         result = await verifier.verify(
-            url=data.url,
+            url=target_url,
             viewport={"width": data.viewport_width, "height": data.viewport_height},
             baseline_screenshot_path=data.baseline_screenshot_url,
             run_a11y=data.run_a11y,

@@ -20,11 +20,20 @@ async def org_events(org_id: str):
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message:
-                    data = json.dumps({
+                    raw_payload = message.get("data", {})
+                    if isinstance(raw_payload, str):
+                        try:
+                            parsed_payload = json.loads(raw_payload)
+                        except Exception:
+                            parsed_payload = raw_payload
+                    else:
+                        parsed_payload = raw_payload
+
+                    event_data = {
                         "type": "org_event",
-                        "data": message.get("data", {}),
-                    })
-                    yield f"data: {data}\n\n"
+                        "payload": parsed_payload,
+                    }
+                    yield f"data: {json.dumps(event_data)}\n\n"
                 await asyncio.sleep(0.5)
         finally:
             await pubsub.unsubscribe(f"guardloop:org:{org_id}")
@@ -52,11 +61,20 @@ async def global_events():
             while True:
                 message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
                 if message:
-                    data = json.dumps({
+                    raw_payload = message.get("data", {})
+                    if isinstance(raw_payload, str):
+                        try:
+                            parsed_payload = json.loads(raw_payload)
+                        except Exception:
+                            parsed_payload = raw_payload
+                    else:
+                        parsed_payload = raw_payload
+
+                    event_data = {
                         "type": "global_event",
-                        "data": message.get("data", {}),
-                    })
-                    yield f"data: {data}\n\n"
+                        "payload": parsed_payload,
+                    }
+                    yield f"data: {json.dumps(event_data)}\n\n"
                 await asyncio.sleep(0.5)
         finally:
             await pubsub.unsubscribe("guardloop:global")

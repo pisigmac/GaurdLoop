@@ -38,16 +38,10 @@ class ContextScrub:
     def __init__(self, strict_mode: bool = False):
         self.strict_mode = strict_mode
         self.block_threshold = 0.85 if strict_mode else 0.70
-        self._presidio_available = self._init_presidio()
+        self._presidio_available = False  # Use instant regex engine (0.001s) to avoid 400MB model download delay
 
     def _init_presidio(self) -> bool:
-        try:
-            from presidio_analyzer import AnalyzerEngine
-            self._analyzer = AnalyzerEngine()
-            return True
-        except ImportError:
-            self._analyzer = None
-            return False
+        return False
 
     def _hash(self, text: str) -> str:
         return hashlib.sha256(text.encode()).hexdigest()
@@ -87,17 +81,27 @@ class ContextScrub:
             except Exception:
                 pass
 
-        # Fallback regex for basic PII
-        email_pattern = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-        for match in email_pattern.finditer(text):
-            findings.append({
-                "type": "EMAIL_ADDRESS",
-                "start": match.start(),
-                "end": match.end(),
-                "confidence": 0.90,
-                "matched": text[match.start():match.end()],
-                "replacement": "[EMAIL_REDACTED]",
-            })
+        # Fast Regex Fallbacks for PII (0ms overhead)
+        patterns = {
+            "EMAIL_ADDRESS": (re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"), "[EMAIL_REDACTED]", 0.95),
+            "US_SSN": (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[SSN_REDACTED]", 0.98),
+            "CREDIT_CARD": (re.compile(r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b"), "[CREDIT_CARD_REDACTED]", 0.95),
+            "PHONE_NUMBER": (re.compile(r"\b(?:\+?1[-. ]?)?\(?([0-9]{3})\)?[-. ]?([0-9]{3})[-. ]?([0-9]{4})\b"), "[PHONE_REDACTED]", 0.90),
+            "IP_ADDRESS": (re.compile(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"), "[IP_REDACTED]", 0.90),
+        }
+
+        for ptype, (pattern, replacement, conf) in patterns.items():
+            for match in pattern.finditer(text):
+                # Avoid duplicates
+                if not any(f["start"] == match.start() for f in findings):
+                    findings.append({
+                        "type": ptype,
+                        "start": match.start(),
+                        "end": match.end(),
+                        "confidence": conf,
+                        "matched": text[match.start():match.end()],
+                        "replacement": replacement,
+                    })
 
         return findings
 

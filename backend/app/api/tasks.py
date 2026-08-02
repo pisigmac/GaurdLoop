@@ -6,6 +6,7 @@ from typing import List
 from app.core.database import get_db
 from app.core.redis import get_redis, broadcast_event
 from app.models.task import Task
+from app.models.agent import Agent
 from app.models.score import Score
 from app.schemas.task import TaskCreate, TaskUpdate, TaskOut, TaskDependencyGraph
 from app.services.taskgraph import TaskGraphEngine
@@ -15,6 +16,13 @@ from app.services.loopmonitor import LoopMonitor
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 loop_monitor = LoopMonitor(max_iterations=50)
+
+async def _get_agent_name(db: AsyncSession, agent_id: str | None) -> str:
+    if not agent_id:
+        return "System Agent"
+    res = await db.execute(select(Agent.name).where(Agent.id == agent_id))
+    name = res.scalar_one_or_none()
+    return name or "Agent"
 
 @router.post("", response_model=TaskOut)
 async def create_task(
@@ -39,10 +47,18 @@ async def create_task(
     await db.commit()
     await db.refresh(task)
 
+    agent_name = await _get_agent_name(db, task.agent_id)
+
     # Publish to Redis for task queue & live monitor SSE
     redis = await get_redis()
     await redis.publish("guardloop:tasks:new", str(task.id))
-    await broadcast_event("default-org", "task_created", {"task_id": str(task.id), "name": task.name, "status": task.status})
+    await broadcast_event("default-org", "task_created", {
+        "task_id": str(task.id),
+        "name": task.name,
+        "agent_id": task.agent_id,
+        "agent_name": agent_name,
+        "status": task.status
+    })
 
     return task
 
@@ -86,7 +102,14 @@ async def update_task(
 
     await db.commit()
     await db.refresh(task)
-    await broadcast_event("default-org", "task_updated", {"task_id": str(task.id), "name": task.name, "status": task.status})
+    agent_name = await _get_agent_name(db, task.agent_id)
+    await broadcast_event("default-org", "task_updated", {
+        "task_id": str(task.id),
+        "name": task.name,
+        "agent_id": task.agent_id,
+        "agent_name": agent_name,
+        "status": task.status
+    })
     return task
 
 @router.post("/{task_id}/start")
@@ -117,9 +140,17 @@ async def start_task(task_id: str, db: AsyncSession = Depends(get_db)):
         task.current_loop = 1
     await db.commit()
 
+    agent_name = await _get_agent_name(db, task.agent_id)
+
     # Start loop monitoring
     loop_monitor.start(task_id)
-    await broadcast_event("default-org", "task_started", {"task_id": str(task_id), "name": task.name, "status": "running"})
+    await broadcast_event("default-org", "task_started", {
+        "task_id": str(task_id),
+        "name": task.name,
+        "agent_id": task.agent_id,
+        "agent_name": agent_name,
+        "status": "running"
+    })
 
     return {"status": "started", "task_id": task_id}
 
@@ -134,6 +165,7 @@ async def check_loop(
 
     result = await db.execute(select(Task).where(Task.id == task_id))
     task = result.scalar_one_or_none()
+    agent_name = "Agent"
     if task:
         task.current_loop = state.iteration
         task.context_size_tokens = state.context_size_tokens
@@ -141,10 +173,13 @@ async def check_loop(
             task.status = "blocked"
             task.error_log = "; ".join(state.warnings)
         await db.commit()
+        agent_name = await _get_agent_name(db, task.agent_id)
 
     await broadcast_event("default-org", "loop_checked", {
         "task_id": str(task_id),
         "name": task.name if task else "Task",
+        "agent_id": task.agent_id if task else None,
+        "agent_name": agent_name,
         "iteration": state.iteration,
         "tokens": state.context_size_tokens,
         "should_halt": state.should_halt,
@@ -218,14 +253,19 @@ async def calculate_score(
     # Update task status based on decision
     if res_score["decision"] == "block":
         task.status = "blocked"
-    elif res_score["decision"] == "auto_approve":
+    else:
         task.status = "completed"
+    task.completed_at = func.now()
 
     await db.commit()
+
+    agent_name = await _get_agent_name(db, task.agent_id)
 
     await broadcast_event("default-org", "score_calculated", {
         "task_id": str(task_id),
         "name": task.name,
+        "agent_id": task.agent_id,
+        "agent_name": agent_name,
         "overall": res_score["overall"],
         "decision": res_score["decision"]
     })
